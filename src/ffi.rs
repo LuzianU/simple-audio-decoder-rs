@@ -74,3 +74,14 @@ pub extern "C" fn audio_clip_resample_next(audio_clip_ptr: *mut c_void) -> *mut 
         std::ptr::null_mut()
     }
 }
+
+#[no_mangle]
+pub extern "C" fn resample_result_free(resample_result_ptr: *mut c_void) {
+    if resample_result_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _ = Box::from_raw(resample_result_ptr as *mut CResampleResult);
+    }
+}

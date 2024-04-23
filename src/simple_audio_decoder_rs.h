@@ -14,3 +14,5 @@ void *audio_clip_from_file(const char *file, size_t target_sample_rate, size_t c
 void audio_clip_free(void *audio_clip_ptr);
 
 void *audio_clip_resample_next(void *audio_clip_ptr);
+
+void resample_result_free(void *audio_clip_ptr);
