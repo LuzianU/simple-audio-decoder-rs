@@ -1,13 +1,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-struct CResampleResult
+typedef struct
 {
     size_t channels;
     size_t frames;
     bool is_done;
     void *buffer;
-};
+} CResampleResult;
 
 void *audio_clip_from_file(const char *file, size_t target_sample_rate, size_t chunk_size);
 
