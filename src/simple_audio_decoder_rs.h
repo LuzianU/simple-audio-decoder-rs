@@ -9,6 +9,8 @@ typedef struct
     void *buffer;
 } CResampleResult;
 
+void clear_cache();
+
 void *audio_clip_from_file(const char *file, size_t target_sample_rate, size_t chunk_size);
 
 void audio_clip_free(void *audio_clip_ptr);

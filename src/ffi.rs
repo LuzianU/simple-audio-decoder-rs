@@ -2,6 +2,19 @@ use std::{ffi::CStr, os::raw::c_void};
 
 use crate::{AudioClip, ResampleContinuation};
 
+#[repr(C)]
+pub struct CResampleResult {
+    pub channels: libc::size_t,
+    pub frames: libc::size_t,
+    pub is_done: bool,
+    pub buffer: *mut c_void,
+}
+
+#[no_mangle]
+pub extern "C" fn clear_cache() {
+    crate::clear_cache();
+}
+
 #[no_mangle]
 pub extern "C" fn audio_clip_from_file(
     file: *const libc::c_char,
@@ -32,14 +45,6 @@ pub extern "C" fn audio_clip_free(audio_clip_ptr: *mut c_void) {
     unsafe {
         let _ = Box::from_raw(audio_clip_ptr as *mut AudioClip);
     }
-}
-
-#[repr(C)]
-pub struct CResampleResult {
-    pub channels: libc::size_t,
-    pub frames: libc::size_t,
-    pub is_done: bool,
-    pub buffer: *mut c_void,
 }
 
 #[no_mangle]

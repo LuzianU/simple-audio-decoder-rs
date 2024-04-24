@@ -39,6 +39,9 @@ fn main() {
         }
     }
 
+    // optinally clear cache
+    simple_audio_decoder_rs::clear_cache();
+
     // interleave channels
     let mut interleaved = Vec::new();
     for i in 0..resampled[0].len() {

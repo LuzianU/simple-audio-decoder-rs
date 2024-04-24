@@ -1,12 +1,22 @@
-use std::{fs::File, io::BufReader, time::Duration};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::BufReader,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use rodio::{Decoder, Source};
 use rubato::Resampler;
 
 mod ffi;
 
+lazy_static::lazy_static! {
+    pub (crate) static ref PCM_MAP: Mutex<HashMap<String, Arc<Pcm>>> = Mutex::new(HashMap::new());
+}
+
 pub struct AudioClip {
-    pcm: Pcm,
+    pcm: Arc<Pcm>,
     resampler: rubato::FastFixedOut<f32>,
     buffer_in: Vec<Vec<f32>>,
     buffer_out: Vec<Vec<f32>>,
@@ -26,19 +36,28 @@ pub enum ResampleContinuation {
 }
 
 impl AudioClip {
-    fn new(
-        pcm: Pcm,
-        resampler: rubato::FastFixedOut<f32>,
-        buffer_in: Vec<Vec<f32>>,
-        buffer_out: Vec<Vec<f32>>,
-    ) -> Self {
-        Self {
+    fn new_from_pcm(pcm: Arc<Pcm>, target_sample_rate: usize, chunk_size: usize) -> Option<Self> {
+        let resample_ratio = target_sample_rate as f64 / pcm.sample_rate as f64;
+
+        let resampler = rubato::FastFixedOut::<f32>::new(
+            resample_ratio,
+            1.0,
+            rubato::PolynomialDegree::Septic, // quality
+            chunk_size,
+            pcm.channels,
+        )
+        .ok()?;
+
+        let buffer_in = resampler.input_buffer_allocate(true);
+        let buffer_out = resampler.output_buffer_allocate(true);
+
+        Some(Self {
             pcm,
             resampler,
             buffer_in,
             buffer_out,
             index: 0,
-        }
+        })
     }
 
     pub fn resample_next(
@@ -85,6 +104,13 @@ impl AudioClip {
     }
 
     pub fn from_file(file: &str, target_sample_rate: usize, chunk_size: usize) -> Option<Self> {
+        if let Ok(pcm_map) = PCM_MAP.lock() {
+            if let Some(pcm) = pcm_map.get(file) {
+                // println!("PCM found in map: {}", file);
+                return AudioClip::new_from_pcm(pcm.clone(), target_sample_rate, chunk_size);
+            }
+        }
+        // println!("PCM not found in map: {}", file);
         if let Some(helper) = SampleConvertHelper::new(file) {
             let sample_rate = helper.sample_rate() as usize;
             let channels = helper.channels() as usize;
@@ -97,23 +123,23 @@ impl AudioClip {
                 channels,
             };
 
-            let resample_ratio = target_sample_rate as f64 / sample_rate as f64;
+            let pcm = Arc::new(pcm);
 
-            let resampler = rubato::FastFixedOut::<f32>::new(
-                resample_ratio,
-                1.0,
-                rubato::PolynomialDegree::Septic, // quality
-                chunk_size,
-                channels,
-            )
-            .ok()?;
+            let pcm_clone = pcm.clone();
 
-            let buffer_in = resampler.input_buffer_allocate(true);
-            let buffer_out = resampler.output_buffer_allocate(true);
+            if let Ok(mut pcm_map) = PCM_MAP.lock() {
+                pcm_map.insert(file.to_string(), pcm);
+            }
 
-            return Some(Self::new(pcm, resampler, buffer_in, buffer_out));
+            return AudioClip::new_from_pcm(pcm_clone, target_sample_rate, chunk_size);
         }
         None
+    }
+}
+
+pub fn clear_cache() {
+    if let Ok(mut pcm_map) = PCM_MAP.lock() {
+        pcm_map.clear();
     }
 }
 
