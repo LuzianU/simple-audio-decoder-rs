@@ -44,23 +44,6 @@ pub extern "C" fn pcm_new_from_data(data: *const u8, size: libc::size_t) -> *mut
 }
 
 #[no_mangle]
-pub extern "C" fn pcm_new_from_raw(
-    data: *const f32,
-    size: libc::size_t,
-    sample_rate: libc::size_t,
-    channels: libc::size_t,
-) -> *mut c_void {
-    let data = unsafe {
-        let slice = std::slice::from_raw_parts(data, size);
-        slice.to_vec()
-    };
-
-    let pcm = Pcm::new_from_raw(data, sample_rate, channels);
-
-    Box::into_raw(Box::new(pcm)) as *mut c_void
-}
-
-#[no_mangle]
 pub extern "C" fn pcm_free(pcm_ptr: *mut c_void) {
     if pcm_ptr.is_null() {
         return;

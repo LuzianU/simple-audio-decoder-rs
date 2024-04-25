@@ -67,14 +67,6 @@ impl Pcm {
 
         None
     }
-
-    pub fn new_from_raw(data: Vec<f32>, sample_rate: usize, channels: usize) -> Self {
-        Pcm {
-            data,
-            sample_rate,
-            channels,
-        }
-    }
 }
 
 impl<'a> AudioClip<'a> {
