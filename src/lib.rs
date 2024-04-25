@@ -1,8 +1,6 @@
 use std::{
-    collections::HashMap,
     fs::File,
-    io::BufReader,
-    sync::{Arc, Mutex},
+    io::{BufReader, Cursor, Read, Seek},
     time::Duration,
 };
 
@@ -11,12 +9,8 @@ use rubato::Resampler;
 
 mod ffi;
 
-lazy_static::lazy_static! {
-    pub (crate) static ref PCM_MAP: Mutex<HashMap<String, Arc<Pcm>>> = Mutex::new(HashMap::new());
-}
-
-pub struct AudioClip {
-    pcm: Arc<Pcm>,
+pub struct AudioClip<'a> {
+    pcm: &'a Pcm,
     resampler: rubato::FastFixedOut<f32>,
     buffer_in: Vec<Vec<f32>>,
     buffer_out: Vec<Vec<f32>>,
@@ -35,8 +29,56 @@ pub enum ResampleContinuation {
     NoMoreData,
 }
 
-impl AudioClip {
-    fn new_from_pcm(pcm: Arc<Pcm>, target_sample_rate: usize, chunk_size: usize) -> Option<Self> {
+impl Pcm {
+    pub fn new_from_file(file: &str) -> Option<Self> {
+        if let Some(helper) = SampleConvertHelper::new_from_file(file) {
+            let sample_rate = helper.sample_rate() as usize;
+            let channels = helper.channels() as usize;
+
+            let data: Vec<f32> = helper.convert_samples().collect();
+
+            let pcm = Pcm {
+                data,
+                sample_rate,
+                channels,
+            };
+
+            return Some(pcm);
+        }
+
+        None
+    }
+
+    pub fn new_from_data(data: Vec<u8>) -> Option<Self> {
+        if let Some(helper) = SampleConvertHelper::new_from_data(data) {
+            let sample_rate = helper.sample_rate() as usize;
+            let channels = helper.channels() as usize;
+
+            let data: Vec<f32> = helper.convert_samples().collect();
+
+            let pcm = Pcm {
+                data,
+                sample_rate,
+                channels,
+            };
+
+            return Some(pcm);
+        }
+
+        None
+    }
+
+    pub fn new_from_raw(data: Vec<f32>, sample_rate: usize, channels: usize) -> Self {
+        Pcm {
+            data,
+            sample_rate,
+            channels,
+        }
+    }
+}
+
+impl<'a> AudioClip<'a> {
+    pub fn new(pcm: &'a Pcm, target_sample_rate: usize, chunk_size: usize) -> Option<Self> {
         let resample_ratio = target_sample_rate as f64 / pcm.sample_rate as f64;
 
         let resampler = rubato::FastFixedOut::<f32>::new(
@@ -102,62 +144,45 @@ impl AudioClip {
             Ok((&self.buffer_out, ResampleContinuation::MoreData))
         }
     }
-
-    pub fn from_file(file: &str, target_sample_rate: usize, chunk_size: usize) -> Option<Self> {
-        if let Ok(pcm_map) = PCM_MAP.lock() {
-            if let Some(pcm) = pcm_map.get(file) {
-                // println!("PCM found in map: {}", file);
-                return AudioClip::new_from_pcm(pcm.clone(), target_sample_rate, chunk_size);
-            }
-        }
-        // println!("PCM not found in map: {}", file);
-        if let Some(helper) = SampleConvertHelper::new(file) {
-            let sample_rate = helper.sample_rate() as usize;
-            let channels = helper.channels() as usize;
-
-            let data: Vec<f32> = helper.convert_samples().collect();
-
-            let pcm = Pcm {
-                data,
-                sample_rate,
-                channels,
-            };
-
-            let pcm = Arc::new(pcm);
-
-            let pcm_clone = pcm.clone();
-
-            if let Ok(mut pcm_map) = PCM_MAP.lock() {
-                pcm_map.insert(file.to_string(), pcm);
-            }
-
-            return AudioClip::new_from_pcm(pcm_clone, target_sample_rate, chunk_size);
-        }
-        None
-    }
 }
 
-pub fn clear_cache() {
-    if let Ok(mut pcm_map) = PCM_MAP.lock() {
-        pcm_map.clear();
-    }
+pub struct SampleConvertHelper<R>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
+    decoder: Decoder<R>,
 }
 
-struct SampleConvertHelper {
-    decoder: Decoder<BufReader<File>>,
-}
-
-impl SampleConvertHelper {
-    pub fn new(file: &str) -> Option<Self> {
+impl SampleConvertHelper<BufReader<File>> {
+    pub fn new_from_file(file: &str) -> Option<Self> {
         if let Ok(file) = std::fs::File::open(file) {
-            if let Ok(decoder) = Decoder::new(BufReader::new(file)) {
-                return Some(SampleConvertHelper { decoder });
-            }
+            return SampleConvertHelper::new(BufReader::new(file));
         }
         None
     }
 }
-impl Iterator for SampleConvertHelper {
+
+impl SampleConvertHelper<Cursor<Vec<u8>>> {
+    pub fn new_from_data(data: Vec<u8>) -> Option<Self> {
+        SampleConvertHelper::new(Cursor::new(data))
+    }
+}
+
+impl<R> SampleConvertHelper<R>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
+    pub fn new(data: R) -> Option<Self> {
+        if let Ok(decoder) = Decoder::new(data) {
+            return Some(SampleConvertHelper { decoder });
+        }
+        None
+    }
+}
+impl<R> Iterator for SampleConvertHelper<R>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
     type Item = i16;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -165,7 +190,10 @@ impl Iterator for SampleConvertHelper {
     }
 }
 
-impl Source for SampleConvertHelper {
+impl<R> Source for SampleConvertHelper<R>
+where
+    R: Read + Seek + Send + Sync + 'static,
+{
     fn current_frame_len(&self) -> Option<usize> {
         self.decoder.current_frame_len()
     }

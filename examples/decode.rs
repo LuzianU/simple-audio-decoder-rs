@@ -1,13 +1,15 @@
 use std::{fs::File, io::Write, slice};
 
-use simple_audio_decoder_rs::{AudioClip, ResampleContinuation};
+use simple_audio_decoder_rs::{AudioClip, Pcm, ResampleContinuation};
 
 fn main() {
     let file = "examples/beat.wav";
     let target_sample_rate = 192000;
     let chunk_size = 1024;
 
-    let clip = AudioClip::from_file(file, target_sample_rate, chunk_size);
+    let pcm = Pcm::new_from_file(file).unwrap();
+
+    let clip = AudioClip::new(&pcm, target_sample_rate, chunk_size);
 
     if clip.is_none() {
         println!("Failed to create AudioClip from file");
@@ -38,9 +40,6 @@ fn main() {
             }
         }
     }
-
-    // optinally clear cache
-    simple_audio_decoder_rs::clear_cache();
 
     // interleave channels
     let mut interleaved = Vec::new();

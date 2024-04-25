@@ -9,9 +9,15 @@ typedef struct
     void *buffer;
 } CResampleResult;
 
-void clear_cache();
+void *pcm_new_from_file(const char *file);
 
-void *audio_clip_from_file(const char *file, size_t target_sample_rate, size_t chunk_size);
+void *pcm_new_from_data(const void *data, size_t size);
+
+void *pcm_new_from_raw(const void *data, size_t size, size_t sample_rate, size_t channels);
+
+void pcm_free(void *pcm_ptr);
+
+void *audio_clip_new(const char *file, size_t target_sample_rate, size_t chunk_size);
 
 void audio_clip_free(void *audio_clip_ptr);
 
